@@ -35,8 +35,9 @@ pub struct Route {
     pub(crate) metadata: Metadata,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Metadata {
+pub struct Metadata {
     pub path_segments: Vec<RouteSegment<'static, Path>>,
     pub query_segments: Option<Vec<RouteSegment<'static, Query>>>,
     pub fully_dynamic_query: bool,
@@ -83,6 +84,11 @@ fn panic<U: Display, E: Display, T>(uri: U, e: E) -> T {
 }
 
 impl Route {
+    #[doc(hidden)]
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
     /// Creates a new route with the given method, path, and handler with a base
     /// of `/`.
     ///
