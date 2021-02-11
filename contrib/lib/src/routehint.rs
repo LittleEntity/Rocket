@@ -243,7 +243,7 @@ impl RoutingDiff {
         })
     }
 
-    fn color_rem_diffs(diffs: &Vec<Difference>, color: &Color) -> String {
+    fn paint_rem_diffs(diffs: &Vec<Difference>, color: &Color) -> String {
         diffs.iter().fold(String::new(), |acc, diff| match diff {
             Difference::Same(s) => acc + s,
             Difference::Add(_) => acc,
@@ -297,7 +297,7 @@ impl RoutingDiff {
                             .iter()
                             .fold(String::new(), |acc, req_seg| acc + "/" + req_seg)
                     }
-                    SegmentDiff::Diff(diffs) => acc + "/" + &Self::color_rem_diffs(diffs, &red),
+                    SegmentDiff::Diff(diffs) => acc + "/" + &Self::paint_rem_diffs(diffs, &red),
                     SegmentDiff::Missing(_route_seg) => acc,
                     SegmentDiff::Unexpected(req_seg) => {
                         acc + "/" + &format!("{}", red.paint(req_seg))
@@ -336,7 +336,7 @@ impl RoutingDiff {
                             .iter()
                             .fold(String::new(), |acc, req_seg| acc + "&" + req_seg)
                     }
-                    SegmentDiff::Diff(diffs) => acc + "&" + &Self::color_rem_diffs(diffs, &red),
+                    SegmentDiff::Diff(diffs) => acc + "&" + &Self::paint_rem_diffs(diffs, &red),
                     SegmentDiff::Missing(_route_seg) => acc,
                     SegmentDiff::Unexpected(req_seg) => {
                         acc + "&" + &format!("{}", red.paint(req_seg))
@@ -346,16 +346,33 @@ impl RoutingDiff {
             request_query.replace_range(0..1, "?");
         }
 
+        let format_route_is_mt_match = |is_mt_match: &IsMediaTypeMatch| match is_mt_match {
+            IsMediaTypeMatch::TrueStatic(route_mt) => route_mt.clone(),
+            IsMediaTypeMatch::TrueDynamic(route_mt, _) => route_mt.clone(),
+            IsMediaTypeMatch::False(diffs) => Self::paint_add_diffs(diffs, &green),
+        };
+
         let route_media_type = match &self.media_type {
-            MediaTypeDiff::IsMatch { top, sub } => match top {
-                IsMediaTypeMatch::TrueStatic(route_mt) => route_mt.clone(),
-                IsMediaTypeMatch::TrueDynamic(route_mt, _) => route_mt.clone(),
-                IsMediaTypeMatch::False(diffs) => {
-                    Self::paint_add_diffs(diffs, &green)
-                }
-            },
+            MediaTypeDiff::IsMatch { top, sub } => {
+                format_route_is_mt_match(top) + "/" + &format_route_is_mt_match(sub)
+            }
             MediaTypeDiff::Missing(route_mt) => format!("{}", green.paint(&route_mt)),
             MediaTypeDiff::Unexpected(_) => "".into(),
+            MediaTypeDiff::None => "".into(),
+        };
+
+        let format_request_is_mt_match = |is_mt_match: &IsMediaTypeMatch| match is_mt_match {
+            IsMediaTypeMatch::TrueStatic(request_mt) => request_mt.clone(),
+            IsMediaTypeMatch::TrueDynamic(_, request_mt) => request_mt.clone(),
+            IsMediaTypeMatch::False(diffs) => Self::paint_rem_diffs(diffs, &red),
+        };
+
+        let request_media_type = match &self.media_type {
+            MediaTypeDiff::IsMatch { top, sub } => {
+                format_request_is_mt_match(top) + "/" + &format_request_is_mt_match(sub)
+            }
+            MediaTypeDiff::Missing(_) => "".into(),
+            MediaTypeDiff::Unexpected(request_mt) => format!("{}", red.paint(&request_mt)),
             MediaTypeDiff::None => "".into(),
         };
 
@@ -363,7 +380,10 @@ impl RoutingDiff {
             "{}: {}{}   {}",
             route_method, route_path, route_query, route_media_type
         );
-        println!("{}: {}{}", request_method, request_path, request_query);
+        println!(
+            "{}: {}{}   {}",
+            request_method, request_path, request_query, request_media_type
+        );
     }
 }
 
