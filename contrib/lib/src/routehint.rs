@@ -78,7 +78,7 @@ struct RoutingDiff {
 }
 
 impl RoutingDiff {
-    fn from(route: &Route, request: &Request) -> Self {
+    fn from(route: &Route, request: &Request<'_>) -> Self {
         RoutingDiff {
             method: if route.method == request.method() {
                 MethodDiff::Same(route.method)
@@ -91,7 +91,7 @@ impl RoutingDiff {
         }
     }
 
-    fn media_type_diff(route: &Route, request: &Request) -> MediaTypeDiff {
+    fn media_type_diff(route: &Route, request: &Request<'_>) -> MediaTypeDiff {
         if let Some(route_mt) = &route.format {
             if let Some(req_mt) = request.format() {
                 MediaTypeDiff::IsMatch {
@@ -108,7 +108,7 @@ impl RoutingDiff {
         }
     }
 
-    fn query_diff(route: &Route, request: &Request) -> Vec<SegmentDiff> {
+    fn query_diff(route: &Route, request: &Request<'_>) -> Vec<SegmentDiff> {
         if let Some(route_params) = &route.metadata().query_segments {
             if let Some(req_params) = request.raw_query_items() {
                 // when there are parameters expected, but more paramters given than expected: it is difficult to decide which one is unexpected, when others are mismatched. Therefore we simply do not log unexpected ones in that case.
@@ -192,7 +192,7 @@ impl RoutingDiff {
         }
     }
 
-    fn path_diff(route: &Route, request: &Request) -> Vec<SegmentDiff> {
+    fn path_diff(route: &Route, request: &Request<'_>) -> Vec<SegmentDiff> {
         let route_segments = &route.metadata().path_segments;
         let mut request_segments = request.uri().segments();
         let mut result = Vec::new();
@@ -235,7 +235,7 @@ impl RoutingDiff {
         result
     }
 
-    fn color_add_diffs(diffs: &Vec<Difference>, color: &Color) -> String {
+    fn paint_add_diffs(diffs: &Vec<Difference>, color: &Color) -> String {
         diffs.iter().fold(String::new(), |acc, diff| match diff {
             Difference::Same(s) => acc + s,
             Difference::Add(s) => acc + &format!("{}", color.paint(s)),
@@ -243,7 +243,13 @@ impl RoutingDiff {
         })
     }
 
-    fn color_rem_diffs(diffs: &Vec<Difference>, color: &Color) {}
+    fn color_rem_diffs(diffs: &Vec<Difference>, color: &Color) -> String {
+        diffs.iter().fold(String::new(), |acc, diff| match diff {
+            Difference::Same(s) => acc + s,
+            Difference::Add(_) => acc,
+            Difference::Rem(s) => acc + &format!("{}", color.paint(s)),
+        })
+    }
 
     fn print(&self) {
         let red = Color::RGB(179, 0, 0);
@@ -269,7 +275,7 @@ impl RoutingDiff {
                     SegmentDiff::StaticMatch(route_seg)
                     | SegmentDiff::SingleMatch(route_seg, _)
                     | SegmentDiff::MultiMatch(route_seg, _) => acc + "/" + route_seg,
-                    SegmentDiff::Diff(diffs) => acc + "/" + &Self::color_add_diffs(diffs, &green),
+                    SegmentDiff::Diff(diffs) => acc + "/" + &Self::paint_add_diffs(diffs, &green),
                     SegmentDiff::Missing(route_seg) => {
                         acc + "/" + &format!("{}", green.paint(route_seg))
                     }
@@ -291,16 +297,7 @@ impl RoutingDiff {
                             .iter()
                             .fold(String::new(), |acc, req_seg| acc + "/" + req_seg)
                     }
-                    SegmentDiff::Diff(diffs) => {
-                        acc + "/"
-                            + &diffs.iter().fold(String::new(), |acc, diff| match diff {
-                                Difference::Same(s) => acc + s,
-                                Difference::Add(_route_part) => acc,
-                                Difference::Rem(req_part) => {
-                                    acc + &format!("{}", red.paint(req_part))
-                                }
-                            })
-                    }
+                    SegmentDiff::Diff(diffs) => acc + "/" + &Self::color_rem_diffs(diffs, &red),
                     SegmentDiff::Missing(_route_seg) => acc,
                     SegmentDiff::Unexpected(req_seg) => {
                         acc + "/" + &format!("{}", red.paint(req_seg))
@@ -317,18 +314,7 @@ impl RoutingDiff {
                     SegmentDiff::StaticMatch(route_seg)
                     | SegmentDiff::SingleMatch(route_seg, _)
                     | SegmentDiff::MultiMatch(route_seg, _) => acc + "&" + route_seg,
-                    SegmentDiff::Diff(diffs) => {
-                        acc + "&"
-                            + &diffs
-                                .iter()
-                                .fold(String::new(), |seg_diff, diff| match diff {
-                                    Difference::Same(s) => seg_diff + s,
-                                    Difference::Add(route_part) => {
-                                        seg_diff + &format!("{}", green.paint(route_part))
-                                    }
-                                    Difference::Rem(_req_part) => seg_diff,
-                                })
-                    }
+                    SegmentDiff::Diff(diffs) => acc + "&" + &Self::paint_add_diffs(diffs, &green),
                     SegmentDiff::Missing(route_seg) => {
                         acc + "&" + &format!("{}", green.paint(route_seg))
                     }
@@ -350,16 +336,7 @@ impl RoutingDiff {
                             .iter()
                             .fold(String::new(), |acc, req_seg| acc + "&" + req_seg)
                     }
-                    SegmentDiff::Diff(diffs) => {
-                        acc + "&"
-                            + &diffs.iter().fold(String::new(), |acc, diff| match diff {
-                                Difference::Same(s) => acc + s,
-                                Difference::Add(_route_part) => acc,
-                                Difference::Rem(req_part) => {
-                                    acc + &format!("{}", red.paint(req_part))
-                                }
-                            })
-                    }
+                    SegmentDiff::Diff(diffs) => acc + "&" + &Self::color_rem_diffs(diffs, &red),
                     SegmentDiff::Missing(_route_seg) => acc,
                     SegmentDiff::Unexpected(req_seg) => {
                         acc + "&" + &format!("{}", red.paint(req_seg))
@@ -369,28 +346,22 @@ impl RoutingDiff {
             request_query.replace_range(0..1, "?");
         }
 
-        let route_media = match &self.media_type {
+        let route_media_type = match &self.media_type {
             MediaTypeDiff::IsMatch { top, sub } => match top {
                 IsMediaTypeMatch::TrueStatic(route_mt) => route_mt.clone(),
                 IsMediaTypeMatch::TrueDynamic(route_mt, _) => route_mt.clone(),
                 IsMediaTypeMatch::False(diffs) => {
-                    diffs.iter().fold(String::new(), |acc, diff| match diff {
-                        Difference::Same(s) => acc + s,
-                        Difference::Add(route_mt_part) => {
-                            acc + &format!("{}", green.paint(route_mt_part))
-                        }
-                        Difference::Rem(_req_mt_part) => acc,
-                    })
+                    Self::paint_add_diffs(diffs, &green)
                 }
             },
             MediaTypeDiff::Missing(route_mt) => format!("{}", green.paint(&route_mt)),
-            MediaTypeDiff::Unexpected(req_mt) => "".into(),
+            MediaTypeDiff::Unexpected(_) => "".into(),
             MediaTypeDiff::None => "".into(),
         };
 
         println!(
             "{}: {}{}   {}",
-            route_method, route_path, route_query, route_media
+            route_method, route_path, route_query, route_media_type
         );
         println!("{}: {}{}", request_method, request_path, request_query);
     }
