@@ -254,6 +254,7 @@ impl RoutingDiff {
     fn print(&self) {
         let red = Color::RGB(179, 0, 0);
         let green = Color::RGB(0, 128, 0);
+        let yellow = Color::RGB(210, 128, 0);
 
         let route_method = match self.method {
             MethodDiff::Same(m) => m.to_string(),
@@ -339,7 +340,7 @@ impl RoutingDiff {
                     SegmentDiff::Diff(diffs) => acc + "&" + &Self::paint_rem_diffs(diffs, &red),
                     SegmentDiff::Missing(_route_seg) => acc,
                     SegmentDiff::Unexpected(req_seg) => {
-                        acc + "&" + &format!("{}", red.paint(req_seg))
+                        acc + "&" + &format!("{}", yellow.paint(req_seg))
                     }
                 });
         if request_query.len() > 0 {
@@ -372,7 +373,7 @@ impl RoutingDiff {
                 format_request_is_mt_match(top) + "/" + &format_request_is_mt_match(sub)
             }
             MediaTypeDiff::Missing(_) => "".into(),
-            MediaTypeDiff::Unexpected(request_mt) => format!("{}", red.paint(&request_mt)),
+            MediaTypeDiff::Unexpected(request_mt) => format!("{}", yellow.paint(&request_mt)),
             MediaTypeDiff::None => "".into(),
         };
 
